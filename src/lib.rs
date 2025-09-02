@@ -16,7 +16,7 @@ use std::{
 pub mod utils;
 
 use bytemuck::bytes_of;
-use wgpu::{util::DeviceExt, ComputePassDescriptor};
+use wgpu::{util::DeviceExt, BufferUsages, ComputePassDescriptor};
 
 // IMPORTANT: the following constants have to be synced with the numbers in radix_sort.wgsl
 
@@ -254,6 +254,7 @@ impl GPUSorter {
 
     fn create_keyval_buffers(
         device: &wgpu::Device,
+        payload_usage: wgpu::BufferUsages,
         length: u32,
     ) -> (wgpu::Buffer, wgpu::Buffer, wgpu::Buffer, wgpu::Buffer) {
         // add padding so that our buffer size is a multiple of keys_per_workgroup
@@ -283,7 +284,8 @@ impl GPUSorter {
             size: payload_size as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
+                | wgpu::BufferUsages::COPY_SRC
+                | payload_usage,
             mapped_at_creation: false,
         });
         // auxiliary buffer for payload/values
@@ -512,12 +514,21 @@ impl GPUSorter {
         self.record_scatter_keys_indirect(bind_group, dispatch_buffer, encoder);
     }
 
-    /// creates all buffers necessary for sorting
     pub fn create_sort_buffers(&self, device: &wgpu::Device, length: NonZeroU32) -> SortBuffers {
+        self.create_sort_buffers_with_usage(device, BufferUsages::empty(), length)
+    }
+
+    /// creates all buffers necessary for sorting
+    pub fn create_sort_buffers_with_usage(
+        &self,
+        device: &wgpu::Device,
+        payload_usage: wgpu::BufferUsages,
+        length: NonZeroU32,
+    ) -> SortBuffers {
         let length = length.get();
 
         let (keys_a, keys_b, payload_a, payload_b) =
-            GPUSorter::create_keyval_buffers(&device, length);
+            GPUSorter::create_keyval_buffers(&device, payload_usage, length);
         let internal_mem_buffer = self.create_internal_mem_buffer(&device, length);
 
         let uniform_infos = Self::general_info_data(length);
